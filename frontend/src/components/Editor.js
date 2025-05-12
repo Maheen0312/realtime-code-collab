@@ -29,12 +29,24 @@ const LANGUAGE_IDS = {
   'rust': 73,
 };
 
+// New function to determine if a language can be executed via Judge0
+const isExecutableLanguage = (lang) => {
+  return LANGUAGE_IDS.hasOwnProperty(lang.toLowerCase());
+};
+
+// New function to determine if a language should be previewed instead of executed
+const isPreviewableLanguage = (lang) => {
+  const previewable = ['html', 'css'];
+  return previewable.includes(lang.toLowerCase());
+};
+
 function Editor({ socketRef, roomId, onCodeChange, language = 'javascript' }) {
     const editorRef = useRef(null);
     const [connected, setConnected] = useState(false);
     const [error, setError] = useState(null);
     const [output, setOutput] = useState('');
     const [isRunning, setIsRunning] = useState(false);
+    const [previewContent, setPreviewContent] = useState('');
     
     // Map file extensions/types to CodeMirror modes
     const getLanguageMode = (lang) => {
@@ -112,6 +124,11 @@ function Editor({ socketRef, roomId, onCodeChange, language = 'javascript' }) {
             // Update parent component with code changes
             onCodeChange && onCodeChange(code);
 
+            // Preview HTML/CSS automatically on change
+            if (isPreviewableLanguage(language)) {
+                updatePreview(code);
+            }
+
             // Emit the code change to other clients in the same room
             if (origin !== 'setValue' && socketRef.current && connected) {
                 try {
@@ -174,6 +191,11 @@ function Editor({ socketRef, roomId, onCodeChange, language = 'javascript' }) {
                 editorRef.current.setValue(code);
                 // Restore cursor position
                 editorRef.current.setCursor(cursor);
+                
+                // Update preview for HTML/CSS
+                if (isPreviewableLanguage(language)) {
+                    updatePreview(code);
+                }
             }
         };
 
@@ -191,14 +213,47 @@ function Editor({ socketRef, roomId, onCodeChange, language = 'javascript' }) {
                 socketRef.current.off(ACTIONS.CODE_CHANGE, handleCodeUpdate);
             }
         };
-    }, [socketRef.current, roomId]);
+    }, [socketRef.current, roomId, language]);
 
     // Change language mode if it changes
     useEffect(() => {
         if (editorRef.current) {
             editorRef.current.setOption('mode', getLanguageMode(language));
+            
+            // Clear output when language changes
+            setOutput('');
+            setPreviewContent('');
+            
+            // Update preview for the current code if it's HTML/CSS
+            if (isPreviewableLanguage(language) && editorRef.current) {
+                updatePreview(editorRef.current.getValue());
+            }
         }
     }, [language]);
+
+    // New function to update the HTML/CSS preview
+    const updatePreview = (code) => {
+        if (language.toLowerCase() === 'html') {
+            setPreviewContent(code);
+        } else if (language.toLowerCase() === 'css') {
+            // For CSS, we create a simple HTML page with the CSS applied
+            setPreviewContent(`
+                <html>
+                <head>
+                    <style>${code}</style>
+                </head>
+                <body>
+                    <div class="preview-container">
+                        <h1>CSS Preview</h1>
+                        <p>This is a paragraph to preview your CSS styles.</p>
+                        <button>Sample Button</button>
+                        <div class="sample-box">Sample Box</div>
+                    </div>
+                </body>
+                </html>
+            `);
+        }
+    };
 
     // Function to run code using Judge0 API
     const runCode = async () => {
@@ -207,6 +262,13 @@ function Editor({ socketRef, roomId, onCodeChange, language = 'javascript' }) {
         const code = editorRef.current.getValue();
         if (!code.trim()) {
             setOutput("Error: No code to execute");
+            return;
+        }
+
+        // Check if we should preview HTML/CSS instead of executing
+        if (isPreviewableLanguage(language)) {
+            updatePreview(code);
+            setOutput("HTML/CSS content is previewed in the right panel.");
             return;
         }
 
@@ -359,14 +421,20 @@ function Editor({ socketRef, roomId, onCodeChange, language = 'javascript' }) {
                 {/* Output Section - 50% */}
                 <div className="w-1/2 flex flex-col bg-gray-900">
                     <div className="p-2 bg-gray-800 flex justify-between items-center">
-                        <span className="text-gray-300 font-semibold">Output</span>
+                        <span className="text-gray-300 font-semibold">
+                            {isPreviewableLanguage(language) ? 'Preview' : 'Output'}
+                        </span>
                         <div className="flex gap-2">
                             <button 
                                 className={`px-3 py-1 rounded text-white ${isRunning ? 'bg-gray-600 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
                                 onClick={runCode}
                                 disabled={isRunning}
                             >
-                                {isRunning ? 'Running...' : 'Run Code'}
+                                {isPreviewableLanguage(language) 
+                                    ? 'Update Preview' 
+                                    : isRunning 
+                                        ? 'Running...' 
+                                        : 'Run Code'}
                             </button>
                             <button 
                                 className="px-3 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white"
@@ -377,9 +445,22 @@ function Editor({ socketRef, roomId, onCodeChange, language = 'javascript' }) {
                             </button>
                         </div>
                     </div>
-                    <div className="flex-1 p-4 font-mono text-sm overflow-auto bg-gray-900 text-gray-200">
-                        <pre>{output || 'Code output will appear here...'}</pre>
-                    </div>
+                    
+                    {/* Show iframe for HTML/CSS preview */}
+                    {isPreviewableLanguage(language) && previewContent ? (
+                        <div className="flex-1 bg-white">
+                            <iframe 
+                                srcDoc={previewContent}
+                                title="Preview"
+                                className="w-full h-full border-0"
+                                sandbox="allow-scripts"
+                            />
+                        </div>
+                    ) : (
+                        <div className="flex-1 p-4 font-mono text-sm overflow-auto bg-gray-900 text-gray-200">
+                            <pre>{output || 'Code output will appear here...'}</pre>
+                        </div>
+                    )}
                 </div>
             </div>
             

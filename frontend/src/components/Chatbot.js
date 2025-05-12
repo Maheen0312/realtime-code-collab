@@ -18,7 +18,7 @@ const Chatbot = () => {
     setLoading(true);
 
     try {
-      const res = await axios.post('https://realtime-collaboration-backend.onrender.com/api/chatbot', { message });
+      const res = await axios.post('https://realtime-code-collab.onrender.com/api/chatbot', { message });
       const botMessage = { sender: 'bot', text: res.data.reply };
       setChat(prev => [...prev, botMessage]);
     } catch (err) {
